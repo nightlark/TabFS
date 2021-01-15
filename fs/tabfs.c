@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <stdint.h>
 #include <assert.h>
+#include <sys/stat.h>
 
 #include <fuse.h>
 
