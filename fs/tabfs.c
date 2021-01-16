@@ -14,6 +14,13 @@
 #include <assert.h>
 #include <sys/stat.h>
 
+// Platform includes for Windows
+#if defined(__MINGW32__)
+#include <io.h>
+#include <fcntl.h>
+#endif
+
+
 #include <fuse.h>
 
 #include "vendor/frozen.h"
@@ -92,7 +99,14 @@ static int do_exchange(unsigned int id,
         .data = NULL,
         .size = 0,
     };
-    if (-1 == pipe(mydata.msgpipe)) {
+#if !defined(__MINGW32__)
+    int pipe_retval = pipe(mydata.msgpipe);
+#else
+    // Windows replaces \n with \r\n in the default mode, O_TEXT
+    // I/O mode must be O_BINARY to avoid corruption
+    int pipe_retval = _pipe(mydata.msgpipe, MAX_MESSAGE_SIZE, O_BINARY);
+#endif
+    if (-1 == pipe_retval) {
         perror("exchange: pipe");
         free(jsonbuf);
         return -EIO;
@@ -463,7 +477,11 @@ static const struct fuse_operations tabfs_oper = {
 int main(int argc, char **argv) {
     (void)argc;
     if (NULL == getenv("TABFS_MOUNT_DIR")) {
+#if !defined(__MINGW32__)
         setenv("TABFS_MOUNT_DIR", "mnt", 1);
+#else
+        _putenv_s("TABFS_MOUNT_DIR", "mnt");
+#endif
     }
 
     freopen("log.txt", "a", stderr);
@@ -481,7 +499,10 @@ int main(int argc, char **argv) {
     system("fusermount -u \"$TABFS_MOUNT_DIR\" 2>/dev/null");
 #endif
 
+// Do not mount directory on Windows: see http://www.secfs.net/winfsp/doc/Frequently-Asked-Questions/
+#if !defined(__MINGW32__)
     system("mkdir -p \"$TABFS_MOUNT_DIR\"");
+#endif
 
     pthread_t thread;
     int err = pthread_create(&thread, NULL, reader_main, NULL);
